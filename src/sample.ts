@@ -1,4 +1,5 @@
 require('dotenv').config();
+/** unused for insight only */
 
 import * as common from './common';
 import * as nodeApi from 'azure-devops-node-api';

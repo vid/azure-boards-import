@@ -32,3 +32,5 @@ const config = {
 
 export default config;
 ```
+
+Practically speaking, transform will probably have to be modified for a particular project too.
