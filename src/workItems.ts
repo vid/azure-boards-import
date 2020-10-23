@@ -1,4 +1,4 @@
-const azdev = require(`azure-devops-node-api`);
+const azdev = require('azure-devops-node-api');
 
 export type TImportWorkItem = {
   '/fields/System.Title': string,
