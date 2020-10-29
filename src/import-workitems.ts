@@ -1,10 +1,7 @@
 import { toJson } from './toJson';
 import { transformer } from './transform';
-import { TImportWorkItem, WI } from './workItems';
+import { TImportWorkItem, WorkItems } from './work-items';
 
-import config from '../config';
-
-console.log('xx', config)
 export type Tinput = Partial<TImportWorkItem>;
 export type Tinputs = Tinput[];
 
@@ -23,16 +20,16 @@ export interface TtransformFunc {
 
 export const jiraDateToADate = (date) => new Date(date).toISOString();
 
-go();
-
-export async function go() {
-    const { adoToken, project, orgUrl, default_area, type_mappings, state_mappings, people_mappings } = config;
-    const import_file = (config as any).import_file || 'import.csv';
+export async function go(config) {
+    const { adoToken, project, org, default_area, type_mappings, state_mappings, people_mappings } = config;
+    const workitems_file = (config as any).workitems || 'sample/workitems.csv';
 
     const transform = transformer({ type_mappings, state_mappings, people_mappings });
-    const wi = new WI({ adoToken, project, orgUrl, bypassRules: true });
-    const text = require('fs').readFileSync(import_file, 'utf-8');
+    const wi = new WorkItems({ adoToken, project, org, bypassRules: true });
+    const text = require('fs').readFileSync(workitems_file, 'utf-8');
+
     const input = toJson(text);
+
     const transformInput = (input) => {
         return input.reduce((all: Tinputs, importItem: Tinput) => {
             const newItem: Tinput = { '/fields/System.areaPath': default_area, '/fields/System.Tags': 'Import ' + Date.now() };
@@ -59,6 +56,10 @@ export async function go() {
     }
     async function doImport(incoming: Tinputs) {
         for (const item of incoming) {
+            if (!item) {
+                continue;
+            }
+            console.log('i', item)
             item['/fields/System.ChangedDate'] = item['/fields/System.CreatedDate']
             const created = await wi.create(item as TImportWorkItem);
             console.log('cc', created.id, created.fields['System.Title']);
@@ -87,11 +88,11 @@ export async function go() {
         // const del = await wi.delete(created.id)
         // console.log('del', del);
         const res = await wi.find();
-        console.log(res.workItems.map(r => r.id));
+        console.log('board workitems:', res.workItems.map(r => r.id));
     }
 
     let incoming = transformInput(input);
-    if (true) incoming = [incoming[1]]
+    if (config.debug) incoming = [incoming[1]]
 
     /*
     const wit = await getWorkItemTypes();
