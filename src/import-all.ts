@@ -1,6 +1,7 @@
 import * as importWorkitems from './import-workitems';
 import * as importWikis from './import-wikis';
 
-const config = JSON.parse(require('fs').readFileSync('./config.json', 'utf-8'));
+import {config} from '../config';
+
 importWorkitems.go(config);
-importWikis.go(config);
+// importWikis.go(config);

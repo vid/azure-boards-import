@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { IConfig } from './IConfig';
 import { toJson } from './toJson';
 import { transformer } from './transform';
 import { TImportWorkItem, WorkItems } from './work-items';
@@ -8,7 +10,8 @@ export type Tinputs = Tinput[];
 export type TTransformContext = {
     v: string | string[] | { rel: string },
     importItem: Tinput,
-    newItem: Partial<TImportWorkItem>
+    newItem: Partial<TImportWorkItem>,
+    remoteStateMap: { [name: string]: string[] }
 }
 
 type transformer = (c: TTransformContext) => void;
@@ -18,23 +21,25 @@ export interface TtransformFunc {
     [key: string]: Ttransformed
 }
 
-export const jiraDateToADate = (date) => new Date(date).toISOString();
+export const jiraDateToADate = (date) => date && new Date(date).toISOString();
 
-export async function go(config) {
-    const { adoToken, project, org, default_area, type_mappings, state_mappings, people_mappings } = config;
-    const workitems_file = (config as any).workitems || 'sample/workitems.csv';
+const RUN_DIR = './run';
 
-    const transform = transformer({ type_mappings, state_mappings, people_mappings });
-    const wi = new WorkItems({ adoToken, project, org, bypassRules: true });
-    const text = require('fs').readFileSync(workitems_file, 'utf-8');
+export async function go(config: IConfig) {
+    const workitems_file = config.workitems.file || 'sample/workitems.csv';
 
-    const input = toJson(text);
+    const transform = transformer(config.workitems);
+    const wi = new WorkItems(config);
+    const text = readFileSync(workitems_file, 'utf-8');
 
-    const transformInput = (input) => {
-        return input.reduce((all: Tinputs, importItem: Tinput) => {
-            const newItem: Tinput = { '/fields/System.areaPath': default_area, '/fields/System.Tags': 'Import ' + Date.now() };
+    let input = toJson(text);
 
-            Object.entries(importItem).forEach(([key, value]) => {
+    const transformInput = (input, remoteStateMap) => {
+        const deferred = [];
+        const transformed = input.reduce((all: Tinputs, importItem: Tinput) => {
+            const newItem: Tinput = { '/fields/System.areaPath': config.workitems.default_area, '/fields/System.Tags': 'Import ' + Date.now(), _comments: [] };
+
+            Object.entries(importItem).forEach(([key, value], row) => {
                 const what = transform[key];
                 if (value !== undefined && what === undefined) {
                     console.error(`no transform for ${key} with "${value}"`);
@@ -44,32 +49,39 @@ export async function go(config) {
                     return all;
                 }
                 if (typeof what === 'string') {
-                    newItem[what] = value;
+                    newItem[what] = newItem[what] ? [...newItem[what], value] : value;
                     return all;
                 }
                 if (typeof what === 'function') {
-                    what({ v: value, importItem, newItem });
+                    try {
+                        what({ v: value, importItem, newItem, remoteStateMap });
+                    } catch (e) {
+                        console.error(`row ${row} field ${key}: ${e}\nvalue: ${value}\nnewItem: ${JSON.stringify(newItem, null, 2)}`);
+                        throw (e);
+                    }
                 }
             });
+            if (newItem._defer) {
+                deferred.push(newItem);
+                return all;
+            }
             return [...all, newItem];
         }, []);
+        return { transformed, deferred };
     }
     async function doImport(incoming: Tinputs) {
         for (const item of incoming) {
             if (!item) {
                 continue;
             }
-            console.log('i', item)
             item['/fields/System.ChangedDate'] = item['/fields/System.CreatedDate']
             const created = await wi.create(item as TImportWorkItem);
-            console.log('cc', created.id, created.fields['System.Title']);
+            console.log('created', created.id, created.fields['System.Title']);
             if (!created) {
                 console.error('did not create');
                 process.exit(1);
             }
-            const ff = await wi.getWorkItems([created.id]);
-            console.log('created', ff)
-            if (item._comments) {
+            if (item._comments.length > 0) {
                 for (const comment of item._comments) {
                     if (comment.length < 1) {
                         continue;
@@ -78,40 +90,61 @@ export async function go(config) {
                     const text = rest.join(';');
                     const ChangedDate = jiraDateToADate(date);
                     const ChangedBy = `${who}@proj`;
-                    console.log('xx', ChangedDate)
 
                     const res = await wi.comment({ text, ChangedBy, ChangedDate }, created);
-                    console.log('comment', comment, res);
+                    console.info('comment', res.id);
                 }
             }
         }
-        // const del = await wi.delete(created.id)
-        // console.log('del', del);
-        const res = await wi.find();
-        console.log('board workitems:', res.workItems.map(r => r.id));
     }
 
-    let incoming = transformInput(input);
-    if (config.debug) incoming = [incoming[1]]
+    const remoteStateMap = await getOrWrite('workItemTypes', async () => await wi.getWorkItemTypeMap());
+    const workItemFields = await getOrWrite('workItemFields', async () => await wi.getFields());
 
-    /*
-    const wit = await getWorkItemTypes();
-    console.log('workitem attributes:', wit.map(w => w.name))
-    const update = await wi.updateWorkItem([{
-        "op": "replace",
-        "path": "/fields/System.State",
-        "value": "Resolved"
-    }],  44);
-    console.log('update', update)
-    const fields = await wi.getFields();
-    console.log('fields', fields.map(f => [f.name, f.referenceName]), 'state', fields.find(f => f.name === 'State'))
-    const ff = await wi.getWorkItems([44]);
-    console.log('ff', ff)
-    */
-    await doImport(incoming);
-    async function getWorkItemTypes() {
-        const relations = await wi.relations();
-        return relations;
+    await deleteAllWorkItems(wi);
+
+    if (config.workitems.limit) input = input.slice(-config.workitems.limit);
+    if (config.workitems.only) input = [input[config.workitems.only]];
+    let { transformed, deferred } = transformInput(input, remoteStateMap);
+    if (Object.keys(deferred).length > 0) {
+        writeFileSync('./run/deferred.json', JSON.stringify(deferred, null, 2));
+        console.info(`wrote ${deferred.length} deferred.json to ${RUN_DIR}`, deferred);
     }
+
+    await doImport(transformed);
+    writeFileSync(`${RUN_DIR}/imported.json`, JSON.stringify(transformed, null, 2));
+    console.info(`wrote ${transformed.length} imported.json to ${RUN_DIR}`);
 };
 
+async function getOrWrite(fn, creator) {
+    let results;
+    try {
+        results = JSON.parse(readFileSync(`${RUN_DIR}/${fn}.json`, 'utf-8'));
+    } catch (e) {
+        console.info(`getting ${fn}`);
+        try {
+            results = await creator();
+            if (!existsSync(RUN_DIR)) {
+                console.info(`mkdir ${RUN_DIR}`);
+                mkdirSync(RUN_DIR);
+            }
+            writeFileSync(`${RUN_DIR}/${fn}.json`, JSON.stringify(results, null, 2));
+        } catch (e2) {
+            throw Error(`cannot retrieve or write workItemTypes ${e2}`);
+        }
+    }
+    return results;
+}
+
+async function deleteAllWorkItems(wi) {
+    const res = await wi.find();
+    console.log('board workitems:', res.workItems.map(r => r.id));
+    for (const r of res.workItems) {
+        console.log('delete', r);
+        try {
+            await wi.delete(r.id);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+}

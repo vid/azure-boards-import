@@ -1,28 +1,36 @@
-import { jiraDateToADate, TtransformFunc } from './import-workitems';
+import { IWorkitems } from './IConfig';
+import { jiraDateToADate, TTransformContext, TtransformFunc } from './import-workitems';
+import { FVC } from './work-items';
 
 // keys that exist will replace input key
 // field list https://docs.microsoft.com/en-us/azure/devops/boards/work-items/guidance/work-item-field?view=azure-devops
 
-export function transformer({ type_mappings, state_mappings, people_mappings }): TtransformFunc {
-  const aPeopleFinder = (field) => (ctx) => getValue(field, people_mappings, ctx, v => `${v}@proj`);
+export function transformer(wconfig: IWorkitems): TtransformFunc {
+  const aPeopleFinder = (field) => (ctx: TTransformContext) => setValue(field, wconfig.people_mappings, ctx, v => `${v}@proj`);
   return {
-    "Issue Type": (ctx) => getValue('_workItemType', type_mappings, ctx, true),
-    Summary: ({ v, importItem, newItem }) => newItem['/fields/System.Title'] = `${(v as string).substr(0, 250)} (${importItem['Issue key']})`,
-    // "Priority": '/fields/System.Priority',
+    "Issue Type": (ctx) => setType(ctx, wconfig.type_mappings),
+    Summary: ({ v, importItem, newItem }) => {
+      newItem['/fields/System.Title'] = `${(v as string).substr(0, 240)} (${importItem['Issue key']})`;
+      if ((v as string).length > 240) {
+        newItem._comments.push(`${jiraDateToADate(Date.now())};import; Title truncated from "${v}"`);
+      }
+    },
     Created: ({ v, newItem }) => newItem['/fields/System.CreatedDate'] = jiraDateToADate(v),
-    // "Resolved": '/fields/System.ClosedDate',
+    Resolved: ({ v, newItem }) => newItem[`${FVC}ClosedDate`] = jiraDateToADate(v),
+    // "Custom field (Start date)": ({ v, newItem }) => newItem['/fields/System.CreatedDate'] = jiraDateToADate(v),
     Description: '/fields/System.Description',
-    Status: (ctx) => getValue('/fields/System.State', state_mappings, ctx, true),
+    Status: (ctx) => getStatus(ctx, wconfig.state_mappings, wconfig.defer_types),
     Comment: '_comments',
-
-    Sprint: undefined,
     Assignee: aPeopleFinder('/fields/System.AssignedTo'),
     Reporter: aPeopleFinder('/fields/System.CreatedBy'),
-    "Creator": '_creator',
+    "Creator": aPeopleFinder('/fields/System.CreatedBy'),
     "Updated": '_creator',
     "Due date": '_creator',
     "Watchers": '_creator',
     "Attachment": '_creator',
+
+    "Priority": ctx => setPriority(ctx, wconfig.priorities),
+    Sprint: undefined,
 
     "Issue key": null,
     "Issue id": null,
@@ -54,7 +62,6 @@ export function transformer({ type_mappings, state_mappings, people_mappings }):
     "Custom field (Name)": null,
     "Custom field (Probability)": null,
     "Custom field (Rank)": null,
-    "Custom field (Start date)": undefined,
     "Custom field (Story point estimate)": null,
     "Custom field (Supplemental Guidance)": null,
     "Custom field (Title)": null,
@@ -64,26 +71,56 @@ export function transformer({ type_mappings, state_mappings, people_mappings }):
   }
 }
 
-function getValue(field, map, { v: value, importItem, newItem }, useDefault: ((v) => string) | boolean) {
+function setPriority(ctx, priority_mapping) {
+  const pi = priority_mapping[ctx.v];
+  if (pi === undefined) {
+    throw Error(`unknown priority ${ctx.v}`)
+  }
+  ctx.newItem[`${FVC}Priority`] = pi;
+}
+
+function setType(ctx, type_mappings) {
+  setValue('_workItemType', type_mappings, ctx, true);
+}
+
+function getStatus(ctx: TTransformContext, state_mappings, defer_types) {
+  const { newItem } = ctx;
+  const sf = '/fields/System.State';
+  const type = newItem._workItemType;
+  const inp = ctx.v as string;
+  if (!state_mappings[type]) {
+    throw Error(`no type ${type} from ${Object.keys(state_mappings)}`);
+  }
+  const value = state_mappings[type][inp] || inp;
+  if (!value) {
+    throw Error(`no value for ${inp} for ${type} from ${state_mappings[type]}`);
+  }
+  if (defer_types.includes(type)) {
+    newItem._defer = type;
+    return;
+  }
+  if (!ctx.remoteStateMap[type]?.includes(value)) {
+    throw Error(`no remote type ${value} for ${type} from ${ctx.remoteStateMap[type]}`);
+  }
+  newItem[sf] = value;
+}
+
+function setValue(field, map, { v: value, importItem, newItem }, useDefault: ((v) => string) | boolean) {
   let what = map[value];
   if (typeof what === null) {
     return;
   }
   if (value !== undefined && what === undefined && useDefault === undefined) {
-    console.error(`no transform or default for field ${field} value "${value}"`);
-    return;
+    throw Error(`no transform or default for field ${field} value "${value}"`);
   }
   if (typeof what === 'string') {
     newItem[field] = what;
-  }
-  if (typeof what === 'function') {
+  } else if (typeof what === 'function') {
     const found = what({ v: value, importItem });
     newItem[field] = found;
-  }
-  if (typeof useDefault === 'function') {
+  } else if (typeof useDefault === 'function') {
     newItem[field] = useDefault(value);
   } else if (useDefault === true) {
-    console.log('fi', field, value)
     newItem[field] = value;
   }
 }

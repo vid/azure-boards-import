@@ -1,4 +1,9 @@
+import { IWorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { DevopsApi } from './DevopsApi';
+import { IConfig, IWorkitems } from './IConfig';
+
+export const FSYSTEM = '/fields/System.';
+export const FVC = '/fields/Microsoft.VSTS.Common.';
 
 export type TImportWorkItem = {
   '/fields/System.Title': string,
@@ -10,13 +15,17 @@ export type TImportWorkItem = {
   '/fields/System.areaPath': string,
   _workItemType: string,
   _state: string,
-  _comments: string[]
+  _comments: string[],
+  _defer?: string
 }
 
 export class WorkItems extends DevopsApi {
-  authHandler: any;
-  _client: any;
-  workItemApi: any;
+  workitems: IWorkitems;
+  workItemApi: IWorkItemTrackingApi;
+  constructor(config: IConfig) {
+    super(config);
+    this.workitems = config.workitems;
+  }
 
   async getWorkItemTrackingApi() {
     if (this.workItemApi) {
@@ -49,7 +58,7 @@ export class WorkItems extends DevopsApi {
         this.auth.project,
         item._workItemType,
         false,
-        this.auth.bypassRules
+        this.workitems.bypassRules
       );
 
       // if result is null, save did not complete correctly
@@ -71,38 +80,18 @@ export class WorkItems extends DevopsApi {
     const client = await this.getWorkItemTrackingApi();
     return await client.getFields(this.auth.project);
   }
-  /*
-  // update existing working item
-  async update(item: TImportWorkItem, workItem) {
-    let patchDocument = [];
 
-    if (
-      workItem.fields["System.Title"] !=
-      `${item.title} (GitHub Issue #${item.originId})`
-    ) {
-      patchDocument.push({
-        op: "add",
-        path: "/fields/System.Title",
-        value: item.title + " (GitHub Issue #" + item.originId + ")",
-      });
+  // creates a lookup for work item types
+  async getWorkItemTypeMap() {
+    const witm = {};
+    const types = await this.getWorkItemTypes();
+    for (const type of types) {
+      const states = await this.getWorkItemTypeStates(type.name);
+      witm[type.name] = states.map(s => s.name);
     }
-
-    if (workItem.fields["System.Description"] != item.description) {
-      patchDocument.push({
-        op: "add",
-        path: "/fields/System.Description",
-        value: item.description,
-      });
-    }
-
-    if (patchDocument.length > 0) {
-      return await this.updateWorkItem(patchDocument, workItem.id);
-    } else {
-      return null;
-    }
+    return witm;
   }
-  */
-  async relations() {
+  async getRelationTypes() {
     const client = await this.getWorkItemTrackingApi();
     return await client.getRelationTypes();
   }
@@ -144,37 +133,19 @@ export class WorkItems extends DevopsApi {
       value: newState['/fields/System.ChangedDate']
     }];
 
-    /*
-    if (newState.comment_text != "") {
-      patchDocument.push({
-        op: "add",
-        path: "/fields/System.History",
-        value:
-          '<a href="' +
-          newState.comment_url +
-          '" target="_new">GitHub Comment Added</a></br></br>' +
-          newState.comment_text,
-      });
-    }
-
-    if (newState.closed_at != "") {
-      patchDocument.push({
-        op: "add",
-        path: "/fields/System.History",
-        value:
-          'GitHub <a href="' +
-          newState.url +
-          '" target="_new">issue #' +
-          newState.number +
-          "</a> was closed on " +
-          newState.closed_at,
-      });
-    }
-    */
-
     return await this.updateWorkItem(patchDocument, workItem.id);
   }
 
+  async getWorkItemTypes() {
+    const client = await this.getWorkItemTrackingApi();
+    const types = await client.getWorkItemTypes(this.auth.project);
+    return types;
+  }
+  async getWorkItemTypeStates(type: string) {
+    const client = await this.getWorkItemTrackingApi();
+    const states = await client.getWorkItemTypeStates(this.auth.project, type);
+    return states;
+  }
   // reopen existing work item
   async reopened(vm, workItem) {
     let patchDocument = [];
@@ -183,7 +154,7 @@ export class WorkItems extends DevopsApi {
       op: "add",
       path: "/fields/System.State",
       value: vm.env.activeState,
-    });
+    });;
 
     patchDocument.push({
       op: "add",
@@ -249,10 +220,9 @@ export class WorkItems extends DevopsApi {
         `SELECT [System.Id], [System.WorkItemType], [System.Description], [System.Title], [System.AssignedTo], [System.State], [System.Tags] FROM workitems WHERE [System.TeamProject] = @project`
     };
 
-    let client;
 
     try {
-      client = await this.getWorkItemTrackingApi();
+      const client = await this.getWorkItemTrackingApi();
       queryResult = await client.queryByWiql(wiql, teamContext);
 
       // if query results = null then i think we have issue with the project name
@@ -294,7 +264,7 @@ export class WorkItems extends DevopsApi {
         id,
         this.auth.project,
         false,
-        this.auth.bypassRules
+        this.workitems.bypassRules
       );
 
       return workItemSaveResult;
