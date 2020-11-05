@@ -6,7 +6,7 @@ import { FVC } from './work-items';
 // field list https://docs.microsoft.com/en-us/azure/devops/boards/work-items/guidance/work-item-field?view=azure-devops
 
 export function transformer(wconfig: IWorkitems): TtransformFunc {
-  const aPeopleFinder = (field) => (ctx: TTransformContext) => setValue(field, wconfig.people_mappings, ctx, v => `${v}@proj`);
+  const aPeopleFinder = (field) => (ctx: TTransformContext) => ctx.v && setValue(field, wconfig.people_mappings, ctx, v => `${v}@proj`);
   return {
     "Issue Type": (ctx) => setType(ctx, wconfig.type_mappings),
     Summary: ({ v, importItem, newItem }) => {
@@ -23,13 +23,13 @@ export function transformer(wconfig: IWorkitems): TtransformFunc {
     Comment: '_comments',
     Assignee: aPeopleFinder('/fields/System.AssignedTo'),
     Reporter: aPeopleFinder('/fields/System.CreatedBy'),
-    "Creator": aPeopleFinder('/fields/System.CreatedBy'),
-    "Updated": '_creator',
-    "Due date": '_creator',
-    "Watchers": '_creator',
-    "Attachment": '_creator',
+    Creator: aPeopleFinder('/fields/System.CreatedBy'),
+    Updated: undefined,
+    'Due date': undefined,
+    Watchers: undefined,
+    Attachment: undefined,
 
-    "Priority": ctx => setPriority(ctx, wconfig.priorities),
+    Priority: ctx => setPriority(ctx, wconfig.priorities),
     Sprint: undefined,
 
     "Issue key": null,
