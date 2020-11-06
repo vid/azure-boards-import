@@ -1,18 +1,49 @@
 import { IWorkitems } from './IConfig';
-import { jiraDateToADate, TTransformContext, TtransformFunc } from './import-workitems';
+import { getPerson, jiraDateToADate, TTransformContext, TtransformFunc } from './import-workitems';
 import { FVC } from './work-items';
 
 // keys that exist will replace input key
 // field list https://docs.microsoft.com/en-us/azure/devops/boards/work-items/guidance/work-item-field?view=azure-devops
 
 export function transformer(wconfig: IWorkitems): TtransformFunc {
-  const aPeopleFinder = (field) => (ctx: TTransformContext) => ctx.v && setValue(field, wconfig.people_mappings, ctx, v => `${v}@proj`);
+  const aPeopleFinder = (field) => ({ newItem, v }: TTransformContext) => {
+    const person = getPerson(v, wconfig.people_mappings);
+    newItem[field] = person;
+  };
+  const map = (idMap, importItem, what) => {
+    const id = importItem['Issue id'];
+    let c = idMap[id] || { comments: [] };
+    c = { ...c, ...what };
+    idMap[id] = c;
+  }
+  const addMapComment = (idMap, importItem, comment) => {
+    if (!comment || comment.length < 1) {
+      return;
+    }
+    const id = importItem['Issue id'];
+    if (!idMap[id]) {
+      throw Error(`Missing ${id} ${JSON.stringify({ importItem }, null, 2)}`)
+    }
+    console.log(idMap[id]);
+    let comments: string[] = idMap[id].comments;
+    if (Array.isArray(comment)) {
+      comments = comments.concat(comment);
+    } else {
+      comments.push(comment);
+    }
+    map(idMap, importItem, { comments });
+  }
   return {
+    "Issue id": ({ idMap, newItem, v, importItem }) => {
+      const id = parseInt(v as string, 10);
+      newItem._id = id;
+      return map(idMap, importItem, { key: importItem['Issue key'] })
+    },
     "Issue Type": (ctx) => setType(ctx, wconfig.type_mappings),
-    Summary: ({ v, importItem, newItem }) => {
+    Summary: ({ v, importItem, newItem, idMap }) => {
       newItem['/fields/System.Title'] = `${(v as string).substr(0, 240)} (${importItem['Issue key']})`;
       if ((v as string).length > 240) {
-        newItem._comments.push(`${jiraDateToADate(Date.now())};import; Title truncated from "${v}"`);
+        addMapComment(idMap, importItem, `${jiraDateToADate(Date.now())};import; Title truncated from "${v}"`);
       }
     },
     Created: ({ v, newItem }) => newItem['/fields/System.CreatedDate'] = jiraDateToADate(v),
@@ -20,20 +51,21 @@ export function transformer(wconfig: IWorkitems): TtransformFunc {
     // "Custom field (Start date)": ({ v, newItem }) => newItem['/fields/System.CreatedDate'] = jiraDateToADate(v),
     Description: '/fields/System.Description',
     Status: (ctx) => getStatus(ctx, wconfig.state_mappings, wconfig.defer_types),
-    Comment: '_comments',
+    Comment: ({ idMap, importItem, v }) => addMapComment(idMap, importItem, v),
     Assignee: aPeopleFinder('/fields/System.AssignedTo'),
-    Reporter: aPeopleFinder('/fields/System.CreatedBy'),
+    Priority: ctx => setPriority(ctx, wconfig.priorities),
     Creator: aPeopleFinder('/fields/System.CreatedBy'),
+
+    Reporter: undefined,
     Updated: undefined,
     'Due date': undefined,
     Watchers: undefined,
     Attachment: undefined,
 
-    Priority: ctx => setPriority(ctx, wconfig.priorities),
     Sprint: undefined,
+    Parent: '_parent',
 
     "Issue key": null,
-    "Issue id": null,
     "Project key": null,
     "Project name": null,
     "Project type": null,
@@ -65,7 +97,6 @@ export function transformer(wconfig: IWorkitems): TtransformFunc {
     "Custom field (Story point estimate)": null,
     "Custom field (Supplemental Guidance)": null,
     "Custom field (Title)": null,
-    "Parent": null,
     "Parent summary": null,
     "Status Category": null
   }
@@ -97,10 +128,10 @@ function getStatus(ctx: TTransformContext, state_mappings, defer_types) {
   }
   if (defer_types.includes(type)) {
     newItem._defer = type;
-    return;
-  }
-  if (!ctx.remoteStateMap[type]?.includes(value)) {
-    throw Error(`no remote type ${value} for ${type} from ${ctx.remoteStateMap[type]}`);
+  } else {
+    if (!ctx.remoteStateMap[type]?.includes(value)) {
+      throw Error(`no remote type ${value} for ${type} from ${ctx.remoteStateMap[type]}`);
+    }
   }
   newItem[sf] = value;
 }

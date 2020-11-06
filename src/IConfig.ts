@@ -6,7 +6,7 @@ export interface IWorkitems {
   only?: number;
   // useful to, for example, not check users
   bypassRules?: boolean;
-  file: string;
+  file?: string;
   // location of wikis to import, for example `import/wikis`
   type_mappings: { [type: string]: string; };
   defer_types: string[],

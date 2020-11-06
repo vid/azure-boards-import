@@ -15,8 +15,10 @@ export type TImportWorkItem = {
   '/fields/System.areaPath': string,
   _workItemType: string,
   _state: string,
-  _comments: string[],
-  _defer?: string
+  _defer?: string,
+  _id: number,
+  _parent?: number,
+  _importedId: number
 }
 
 export class WorkItems extends DevopsApi {
@@ -121,16 +123,15 @@ export class WorkItems extends DevopsApi {
     return await this.updateWorkItem(patchDocument, workItem.id);
   }
 
-  // close work item
-  async changeState(newState: { state: string }, workItem) {
+  async addParent(parent: { url: string }, workItem) {
+    console.log('ap', parent, workItem)
     let patchDocument = [{
       op: "add",
-      path: "/fields/System.State",
-      value: newState.state
-    }, {
-      op: "add",
-      path: '/fields/Microsoft.VSTS.Common.StateChangeDate',
-      value: newState['/fields/System.ChangedDate']
+      path: "/relations/-",
+      value: {
+        rel: "System.LinkTypes.Hierarchy-Reverse",
+        url: parent.url
+      }
     }];
 
     return await this.updateWorkItem(patchDocument, workItem.id);

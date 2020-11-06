@@ -2,7 +2,6 @@ import { Wiki } from './wiki';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IConfig } from './DevopsApi';
-import { isBreakOrContinueStatement } from 'typescript';
 
 export async function go(config: IConfig) {
   const wiki = new Wiki(config);
