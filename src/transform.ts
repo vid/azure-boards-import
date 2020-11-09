@@ -24,7 +24,6 @@ export function transformer(wconfig: IWorkitems): TtransformFunc {
     if (!idMap[id]) {
       throw Error(`Missing ${id} ${JSON.stringify({ importItem }, null, 2)}`)
     }
-    console.log(idMap[id]);
     let comments: string[] = idMap[id].comments;
     if (Array.isArray(comment)) {
       comments = comments.concat(comment);
@@ -48,21 +47,21 @@ export function transformer(wconfig: IWorkitems): TtransformFunc {
     },
     Created: ({ v, newItem }) => newItem['/fields/System.CreatedDate'] = jiraDateToADate(v),
     Resolved: ({ v, newItem }) => newItem[`${FVC}ClosedDate`] = jiraDateToADate(v),
-    // "Custom field (Start date)": ({ v, newItem }) => newItem['/fields/System.CreatedDate'] = jiraDateToADate(v),
+    "Custom field (Start date)": ({ v, newItem }) => newItem[`${FVC}StartDate`] = jiraDateToADate(v),
     Description: '/fields/System.Description',
     Status: (ctx) => getStatus(ctx, wconfig.state_mappings, wconfig.defer_types),
     Comment: ({ idMap, importItem, v }) => addMapComment(idMap, importItem, v),
     Assignee: aPeopleFinder('/fields/System.AssignedTo'),
     Priority: ctx => setPriority(ctx, wconfig.priorities),
     Creator: aPeopleFinder('/fields/System.CreatedBy'),
+    'Due date': `${FVC}Due Date`,
 
     Reporter: undefined,
     Updated: undefined,
-    'Due date': undefined,
     Watchers: undefined,
     Attachment: undefined,
 
-    Sprint: undefined,
+    Sprint: `/fields/System.Iteration ID`,
     Parent: '_parent',
 
     "Issue key": null,

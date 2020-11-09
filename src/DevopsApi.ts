@@ -63,4 +63,8 @@ export class DevopsApi {
   getApiPath(append: string) {
     return `https://${this.auth.adoToken}@dev.azure.com/${this.auth.org}/${this.auth.project}/_apis` + append;
   }
+  async getTeams() {
+    const coreApiObject = await this.getCoreApiObject();
+    return await await coreApiObject.getAllTeams();
+  }
 }

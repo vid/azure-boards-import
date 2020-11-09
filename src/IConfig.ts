@@ -1,6 +1,11 @@
 
 
-export interface IAuth { org: string; project: string; adoToken: string; }
+export interface IAuth {
+  org: string;
+  project: string;
+  adoToken: string;
+  team: string;
+}
 export interface IWorkitems {
   limit?: number;
   only?: number;
@@ -17,6 +22,8 @@ export interface IWorkitems {
 }
 
 export interface IConfig {
+  // usually retrieved via auth.team
+  teamId?: string,
   auth: IAuth;
   // limit import to this number
   // location of workitems csv

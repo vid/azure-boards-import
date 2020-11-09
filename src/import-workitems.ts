@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { IConfig } from './IConfig';
 import { toJson } from './toJson';
 import { transformer } from './transform';
+import { Work } from './work';
 import { TImportWorkItem, WorkItems } from './work-items';
 
 export type Tinput = Partial<TImportWorkItem>;
@@ -25,8 +26,8 @@ export interface TtransformFunc {
 export const jiraDateToADate = (date) => date && new Date(date).toISOString();
 
 // CAUTION
-const DELETE_ALL_FIRST = true;
-const DO_IMPORT = true;
+const DELETE_ALL_FIRST = false;
+const DO_IMPORT = false;
 
 const RUN_DIR = './run';
 
@@ -34,15 +35,22 @@ export async function go(config: IConfig) {
     const workitems_file = config.workitems.file || 'sample/workitems.csv';
 
     const transform = transformer(config.workitems);
-    const wi = new WorkItems(config);
+    const workItems = new WorkItems(config);
+    const work = new Work(config);
     const text = readFileSync(workitems_file, 'utf-8');
 
     let input = toJson(text);
 
-    const remoteStateMap = await getOrWrite('workItemTypes', async () => await wi.getWorkItemTypeMap());
-    const workItemFields = await getOrWrite('workItemFields', async () => await wi.getFields());
+    const remoteStateMap = await getOrWrite('workItemTypes', async () => await workItems.getWorkItemTypeMap());
+    const workItemFields = await getOrWrite('workItemFields', async () => await workItems.getFields());
+    const teams = await getOrWrite('teams', async () => await workItems.getTeams());
+    config.teamId = config.teamId || teams.find(t => t.name === config.auth.team)?.id;
+    if (!config.teamId) {
+        throw Error(`cannot find team id from ${config.auth.team}`);
+    }
+    const iterations = await work.getTeamIterations(teamId);
 
-    if (DELETE_ALL_FIRST) await deleteAllWorkItems(wi);
+    if (DELETE_ALL_FIRST) await deleteAllWorkItems(workItems);
 
     if (config.workitems.limit) input = input.slice(-config.workitems.limit);
     if (config.workitems.only) input = [input[config.workitems.only]];
@@ -55,7 +63,7 @@ export async function go(config: IConfig) {
     }
 
     if (DO_IMPORT) {
-        const errors = await doImport(wi, transformed, idMap, config.workitems.people_mappings);
+        const errors = await doImport(workItems, transformed, idMap, config.workitems.people_mappings);
         if (errors.length > 0) {
             writeFileSync('./run/errors.json', JSON.stringify(errors, null, 2));
             console.error(`wrote ${errors.length} to errors.json in ${RUN_DIR}`);
