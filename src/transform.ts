@@ -61,7 +61,9 @@ export function transformer(wconfig: IWorkitems): TtransformFunc {
     Watchers: undefined,
     Attachment: undefined,
 
-    Sprint: `/fields/System.Iteration ID`,
+    Sprint: ({v, newItem}) => {
+      newItem._sprint = <string>v;
+    },
     Parent: '_parent',
 
     "Issue key": null,

@@ -1,3 +1,6 @@
+import { TeamSettingsIteration } from 'azure-devops-node-api/interfaces/WorkInterfaces';
+import { TreeStructureGroup, WorkItemClassificationNode } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces';
+import { IWorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { IConfig } from './IConfig';
 import { toJson } from './toJson';
@@ -44,11 +47,39 @@ export async function go(config: IConfig) {
     const remoteStateMap = await getOrWrite('workItemTypes', async () => await workItems.getWorkItemTypeMap());
     const workItemFields = await getOrWrite('workItemFields', async () => await workItems.getFields());
     const teams = await getOrWrite('teams', async () => await workItems.getTeams());
-    config.teamId = config.teamId || teams.find(t => t.name === config.auth.team)?.id;
+    const team = await teams.find(t => t.name === config.auth.team);
+    config.teamId = config.teamId || team?.id;
     if (!config.teamId) {
         throw Error(`cannot find team id from ${config.auth.team}`);
     }
-    const iterations = await work.getTeamIterations(teamId);
+    const iterations = await work.getTeamIterations(team);
+    console.log('i', config.teamId, team, iterations)
+    /*
+       static WorkItemClassificationNode CreateIteration(string TeamProjectName, string IterationName, DateTime? StartDate = null, DateTime? FinishDate = null, string ParentIterationPath = null)
+    {
+        WorkItemClassificationNode newIteration = new WorkItemClassificationNode();
+        newIteration.Name = IterationName;
+
+        if (StartDate != null && FinishDate != null)
+        {
+            newIteration.Attributes = new Dictionary<string, object>();
+            newIteration.Attributes.Add("startDate", StartDate);
+            newIteration.Attributes.Add("finishDate", FinishDate);
+        }
+
+        return WitClient.CreateOrUpdateClassificationNodeAsync(newIteration, TeamProjectName, TreeStructureGroup.Iterations, ParentIterationPath).Result;
+    }
+
+var newNode = CreateIteration(TeamProjectName, @"R2");
+newNode = CreateIteration(TeamProjectName, @"R2.1", ParentIterationPath: @"R2");
+newNode = CreateIteration(TeamProjectName, @"Ver1", new DateTime(2019, 1, 1), new DateTime(2019, 1, 7), @"R2\R2.1");
+*/
+
+    const iteration = await workItems.createIteration('wtwwxxyixr', '');
+    delete iteration.path;
+    console.log('it', iteration)
+    work.createTeamIteration(team, iteration as any);
+    console.log('ic', config.teamId, iteration)
 
     if (DELETE_ALL_FIRST) await deleteAllWorkItems(workItems);
 
@@ -149,6 +180,9 @@ async function doImport(wi: WorkItems, incoming, idMap, peopleMappings) {
     for (const item of incoming) {
         if (!item) {
             continue;
+        }
+        if (item._sprint) {
+            // `/fields/System.Iteration ID`,
         }
         if (item._parent) {
             const id = item._importedId;
