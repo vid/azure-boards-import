@@ -1,15 +1,14 @@
-import { TeamSettingsIteration } from 'azure-devops-node-api/interfaces/WorkInterfaces';
-import { TreeStructureGroup, WorkItemClassificationNode } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces';
-import { IWorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { IConfig } from './IConfig';
 import { toJson } from './toJson';
-import { transformer } from './transform';
+import { Transformer } from './transform';
 import { Work } from './work';
 import { TImportWorkItem, WorkItems } from './work-items';
 
 export type Tinput = Partial<TImportWorkItem>;
 export type Tinputs = Tinput[];
+
+export const ISSUE_ID = 'Issue id';
 
 export type TTransformContext = {
     v: string | string[] | { rel: string },
@@ -27,17 +26,18 @@ export interface TtransformFunc {
 }
 
 export const jiraDateToADate = (date) => date && new Date(date).toISOString();
+export const azdoDate = (date) => (date as Date).toISOString();
 
 // CAUTION
-const DELETE_ALL_FIRST = false;
-const DO_IMPORT = false;
+const DELETE_ALL_FIRST = true;
+const DO_IMPORT = true;
 
 const RUN_DIR = './run';
 
 export async function go(config: IConfig) {
     const workitems_file = config.workitems.file || 'sample/workitems.csv';
 
-    const transform = transformer(config.workitems);
+    const transformer = new Transformer(config.workitems);
     const workItems = new WorkItems(config);
     const work = new Work(config);
     const text = readFileSync(workitems_file, 'utf-8');
@@ -45,15 +45,16 @@ export async function go(config: IConfig) {
     let input = toJson(text);
 
     const remoteStateMap = await getOrWrite('workItemTypes', async () => await workItems.getWorkItemTypeMap());
-    const workItemFields = await getOrWrite('workItemFields', async () => await workItems.getFields());
+    // const workItemFields = await getOrWrite('workItemFields', async () => await workItems.getFields());
     const teams = await getOrWrite('teams', async () => await workItems.getTeams());
     const team = await teams.find(t => t.name === config.auth.team);
     config.teamId = config.teamId || team?.id;
     if (!config.teamId) {
         throw Error(`cannot find team id from ${config.auth.team}`);
     }
-    const iterations = await work.getTeamIterations(team);
-    console.log('i', config.teamId, team, iterations)
+    // FIXME create missing iterations. documentation seems very thin around this.
+    // const iterations = await work.getTeamIterations(team);
+    // console.log('i', config.teamId, team, iterations)
     /*
        static WorkItemClassificationNode CreateIteration(string TeamProjectName, string IterationName, DateTime? StartDate = null, DateTime? FinishDate = null, string ParentIterationPath = null)
     {
@@ -75,18 +76,19 @@ newNode = CreateIteration(TeamProjectName, @"R2.1", ParentIterationPath: @"R2");
 newNode = CreateIteration(TeamProjectName, @"Ver1", new DateTime(2019, 1, 1), new DateTime(2019, 1, 7), @"R2\R2.1");
 */
 
-    const iteration = await workItems.createIteration('wtwwxxyixr', '');
-    delete iteration.path;
-    console.log('it', iteration)
-    work.createTeamIteration(team, iteration as any);
-    console.log('ic', config.teamId, iteration)
 
-    if (DELETE_ALL_FIRST) await deleteAllWorkItems(workItems);
+    // const iteration = await workItems.createIteration('wtwwxxyixr', '');
+    // delete iteration.path;
+    // console.log('it', iteration)
+    // work.createTeamIteration(team, iteration as any);
+    // console.log('ic', config.teamId, iteration)
+
 
     if (config.workitems.limit) input = input.slice(-config.workitems.limit);
-    if (config.workitems.only) input = [input[config.workitems.only]];
+    if (config.workitems.only) input = [input[config.workitems.only - 2]];
 
-    let { transformed, deferred, idMap } = transformInput(transform, config.workitems.default_area, input, remoteStateMap);
+    let { transformed, deferred, idMap } = transformInput(transformer, config.workitems.default_area, input, remoteStateMap);
+    if (DELETE_ALL_FIRST) await deleteImportedWorkItems(workItems);
 
     if (Object.keys(deferred).length > 0) {
         writeFileSync('./run/deferred.json', JSON.stringify(deferred, null, 2));
@@ -101,22 +103,29 @@ newNode = CreateIteration(TeamProjectName, @"Ver1", new DateTime(2019, 1, 1), ne
         }
     }
 
-    writeFileSync(`${RUN_DIR}/imported.json`, JSON.stringify(transformed, null, 2));
+    writeFileSync(`${RUN_DIR}/imported.json`, JSON.stringify({ transformed, idMap }, null, 2));
     console.info(`wrote ${transformed.length} to imported.json in ${RUN_DIR}`);
 };
 
 
-const transformInput = (transform, default_area, input, remoteStateMap) => {
+const transformInput = (transformer, default_area, input, remoteStateMap) => {
     const deferred = [];
-    const idMap = {};
+    const transform = transformer.transform();
     const transformed = input.reduce((all: Tinputs, importItem: Tinput) => {
-        const newItem: Tinput = { '/fields/System.areaPath': default_area, '/fields/System.Tags': 'Import ' + Date.now() };
+        const _id = importItem[ISSUE_ID];
+        if (!_id) {
+            throw Error(`no id ${JSON.stringify(importItem)}`);
+        }
+        const newItem: Tinput = { _id, '/fields/System.areaPath': default_area };
+        transformer.addIdMapTag(newItem, 'Import ' + Date.now());
 
         Object.entries(importItem).forEach(([key, value], row) => {
             const what = transform[key];
             if (value !== undefined && what === undefined) {
-                console.error(`no transform for ${key} with "${value}"`);
-                return all;
+                const s = JSON.stringify(value).replace(/"/g, '');
+                if (s.length > 0) {
+                    transformer.addUndefined(newItem, `[${key}]: ${s}`);
+                }
             }
             if (typeof what === null) {
                 return all;
@@ -126,12 +135,12 @@ const transformInput = (transform, default_area, input, remoteStateMap) => {
                 return all;
             }
             if (typeof what === 'function') {
-                try {
-                    what({ v: value, importItem, newItem, remoteStateMap, idMap });
-                } catch (e) {
-                    console.error(`row ${row} field ${key}: ${e}\nvalue: ${value}\nnewItem: ${JSON.stringify(newItem, null, 2)}`);
-                    throw (e);
-                }
+                // try {
+                what({ v: value, importItem, newItem, remoteStateMap });
+                // } catch (e) {
+                //     console.error(`row ${row} field ${key}: ${e}\nvalue: ${value}\nnewItem: ${JSON.stringify(newItem, null, 2)}`);
+                //     throw (e);
+                // }
             }
         });
         if (newItem._defer) {
@@ -140,7 +149,7 @@ const transformInput = (transform, default_area, input, remoteStateMap) => {
         }
         return [...all, newItem];
     }, []);
-    return { transformed, deferred, idMap };
+    return { transformed, deferred, idMap: transformer.idMap };
 }
 
 async function doImport(wi: WorkItems, incoming, idMap, peopleMappings) {
@@ -154,35 +163,36 @@ async function doImport(wi: WorkItems, incoming, idMap, peopleMappings) {
         const importingId = item._id;
         const { id: importedId, url } = created;
         console.info('created', importedId, created.fields['System.Title']);
-        idMap[importingId].importId = importedId;
-        idMap[importingId].url = url;
+        if (idMap[importingId]) {
+            idMap[importingId].importId = importedId;
+            idMap[importingId].url = url;
+        }
         item._importedId = importedId;
         if (!created) {
             console.error('did not create');
             process.exit(1);
         }
-        const comments = idMap[importingId].comments;
-        if (comments.length > 0) {
-            for (const comment of comments) {
-                if (comment.length < 1) {
-                    continue;
-                }
-                const [date, who, ...rest] = comment.split(';');
-                const text = rest.join(';');
-                const ChangedDate = jiraDateToADate(date);
+        const { comments, tags } = idMap[importingId];
+        if (comments?.length > 0) {
+            const sorted = comments.sort((a, b) => a.date - b.date);
+
+            for (const mc of sorted) {
+                const { date, who, comment: text } = mc;
+                const ChangedDate = azdoDate(date);
                 const ChangedBy = getPerson(who, peopleMappings);
 
-                const res = await wi.comment({ text, ChangedBy, ChangedDate }, created);
+                const res = await wi.addComment({ text, ChangedBy, ChangedDate }, created);
                 console.info('comment', res.id);
             }
+        }
+        if (tags?.length > 0) {
+            const res = await wi.addTags(tags, created);
+            console.log('added tags', tags, res.id);
         }
     }
     for (const item of incoming) {
         if (!item) {
             continue;
-        }
-        if (item._sprint) {
-            // `/fields/System.Iteration ID`,
         }
         if (item._parent) {
             const id = item._importedId;
@@ -192,7 +202,7 @@ async function doImport(wi: WorkItems, incoming, idMap, peopleMappings) {
                 continue;
             }
             const res = await wi.addParent({ url: parentURL }, { id });
-            console.info(`assigned parentId ${parentURL} to ${id}`, res)
+            console.info(`assigned parentId ${parentURL} to ${id}`, res.id)
         }
     }
     return errors;
@@ -222,13 +232,16 @@ async function getOrWrite(fn, creator) {
     return results;
 }
 
-async function deleteAllWorkItems(wi) {
+async function deleteImportedWorkItems(wi) {
     const res = await wi.find();
-    console.info('deleting workitems:', res.workItems.map(r => r.id));
-    for (const r of res.workItems) {
+    console.log('getting import delete candidates');
+    const cis = await wi.getWorkItems(res.workItems.map(r => r.id));
+    const wis = cis.filter(w => w.fields['System.Title'].match(/\(SIC-\d+\)$/)).map(w => w.id);
+    console.info('deleting workitems:', wis);
+    for (const r of wis) {
         console.info('delete', r);
         try {
-            await wi.delete(r.id);
+            await wi.delete(r);
         } catch (e) {
             console.error(e);
         }

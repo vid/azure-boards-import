@@ -19,9 +19,10 @@ export type TImportWorkItem = {
   _defer?: string,
   _id: number,
   _parent?: number,
-  _importedId: number,
-  _sprint: string
+  _importedId: number
 }
+
+export type TPImportWorkItem = Partial<TImportWorkItem>;
 
 export class WorkItems extends DevopsApi {
   workitems: IWorkitems;
@@ -105,7 +106,7 @@ export class WorkItems extends DevopsApi {
     return await client.deleteWorkItem(id, this.auth.project, destroy);
   }
   // add comment to an existing work item
-  async comment(comment: { text: string, ChangedDate: string, ChangedBy: string }, workItem) {
+  async addComment(comment: { text: string, ChangedDate: string, ChangedBy: string }, workItem) {
     const patchDocument = [{
       op: "add",
       path: "/fields/System.History",
@@ -125,8 +126,19 @@ export class WorkItems extends DevopsApi {
     return await this.updateWorkItem(patchDocument, workItem.id);
   }
 
+  // add tag to an existing work item
+  async addTags(tags: string[], workItem: { id: string }) {
+    const patchDocument = [{
+      op: 'add',
+      path: "/fields/System.Tags",
+      value: tags.join(',')
+    }]
+
+    return await this.updateWorkItem(patchDocument, workItem.id);
+  }
+
+
   async addParent(parent: { url: string }, workItem) {
-    console.log('ap', parent, workItem)
     let patchDocument = [{
       op: "add",
       path: "/relations/-",
@@ -244,7 +256,6 @@ export class WorkItems extends DevopsApi {
     const client = await this.getWorkItemTrackingApi();
     let workItems = [];
     for (const id of workItemIds) {
-
       try {
         const result = await client.getWorkItem(id, null, null, 4);
         workItems.push(result);
