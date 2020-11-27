@@ -1,5 +1,6 @@
 import { IWorkitems } from './IConfig';
 import { ISSUE_ID, getPerson, jiraDateToADate, TTransformContext, TtransformFunc } from './import-workitems';
+import { jiraMdToAzboardsHTML } from './jira-md-transformer';
 import { FVC, TImportWorkItem, TPImportWorkItem } from './work-items';
 
 // keys that exist will replace input key
@@ -33,7 +34,11 @@ export class Transformer {
       Created: ({ v, newItem }) => newItem['/fields/System.CreatedDate'] = jiraDateToADate(v),
       Resolved: ({ v, newItem }) => newItem[`${FVC}ClosedDate`] = jiraDateToADate(v),
       "Custom field (Start date)": undefined,
-      Description: '/fields/System.Description',
+      Description: ({ v, newItem }) => {
+        const desc = jiraMdToAzboardsHTML(v as string);
+        console.log('v', v, desc)
+        newItem['/fields/System.Description'] = desc;
+      },
       Status: (ctx) => this.getStatus(ctx, this.wconfig.state_mappings, this.wconfig.defer_types),
       Comment: ({ newItem, v }) => {
         for (const c of (v as string[])) {

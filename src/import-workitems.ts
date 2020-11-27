@@ -29,8 +29,8 @@ export const jiraDateToADate = (date) => date && new Date(date).toISOString();
 export const azdoDate = (date) => (date as Date).toISOString();
 
 // CAUTION
-const DELETE_ALL_FIRST = true;
-const DO_IMPORT = true;
+const DELETE_ALL_FIRST = false;
+const DO_IMPORT = false;
 
 const RUN_DIR = './run';
 
