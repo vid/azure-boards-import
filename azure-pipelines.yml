@@ -22,9 +22,16 @@ steps:
 
 - script: |
     npm install
+  displayName: 'npm install'
+
+- task: DownloadSecureFile@1
+  inputs:
+    secureFile: 'config.ts'
+
+- task: DownloadSecureFile@1
+  inputs:
+    secureFile: 'workitems.csv'
+
+- script: |
     npm run import
-  displayName: 'npm install and build'
-
-- script: echo $(Password) > secret.txt
-
-- publish: secret.txt
+  displayName: 'npm import'
