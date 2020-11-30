@@ -225,7 +225,7 @@ export class WorkItems extends DevopsApi {
   }
 
   // find work item to see if it already exists
-  async find(number?: Number) {
+  async find(area: string) {
     let queryResult = null;
 
     let teamContext = { project: this.auth.project };
@@ -233,8 +233,8 @@ export class WorkItems extends DevopsApi {
     let wiql = {
       query:
         `SELECT [System.Id], [System.WorkItemType], [System.Description], [System.Title], [System.AssignedTo], [System.State], [System.Tags] FROM workitems WHERE [System.TeamProject] = @project`
+         + (area ? ` AND [System.AreaPath] = '${area}'` : '')
     };
-
 
     try {
       const client = await this.getWorkItemTrackingApi();

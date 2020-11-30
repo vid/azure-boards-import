@@ -87,7 +87,7 @@ newNode = CreateIteration(TeamProjectName, @"Ver1", new DateTime(2019, 1, 1), ne
     if (config.workitems.only) input = [input[config.workitems.only - 2]];
 
     let { transformed, deferred, idMap } = transformInput(transformer, config.workitems.default_area, input, remoteStateMap);
-    if (config.workitems.deleteAllFirst) await deleteImportedWorkItems(workItems);
+    if (config.workitems.deleteAllFirst) await deleteImportedWorkItems(workItems, config.workitems.default_area);
 
     if (Object.keys(deferred).length > 0) {
         writeFileSync('./run/deferred.json', JSON.stringify(deferred, null, 2));
@@ -231,8 +231,8 @@ async function getOrWrite(fn, creator) {
     return results;
 }
 
-async function deleteImportedWorkItems(wi) {
-    const res = await wi.find();
+async function deleteImportedWorkItems(wi, area) {
+    const res = await wi.find(area);
     console.log('getting import delete candidates');
     const cis = await wi.getWorkItems(res.workItems.map(r => r.id));
     const wis = cis.filter(w => w.fields['System.Title'].match(/\(SIC-\d+\)$/)).map(w => w.id);
