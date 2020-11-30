@@ -34,7 +34,7 @@ steps:
     name: csv
     secureFile: 'workitems.csv'
 
--script: ls
+- script: ls
 
 
 - script: |
