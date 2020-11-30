@@ -27,6 +27,7 @@ export interface TtransformFunc {
 
 export const jiraDateToADate = (date) => date && new Date(date).toISOString();
 export const azdoDate = (date) => (date as Date).toISOString();
+const importId = 'Import ' + Date.now();
 
 // CAUTION
 const RUN_DIR = './run';
@@ -116,7 +117,7 @@ const transformInput = (transformer, default_area, input, remoteStateMap) => {
             throw Error(`no id ${JSON.stringify(importItem)}`);
         }
         const newItem: Tinput = { _id, '/fields/System.areaPath': default_area };
-        transformer.addIdMapTag(newItem, 'Import ' + Date.now());
+        transformer.addIdMapTag(newItem, importId);
 
         Object.entries(importItem).forEach(([key, value], row) => {
             const what = transform[key];
