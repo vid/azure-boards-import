@@ -1,9 +1,10 @@
 {
   "name": "azure-boards",
-  "version": "1.0.0",
+  "version": "0.9.9",
   "description": "",
   "main": "index.js",
   "scripts": {
+    "import": "ts-node src/import-all.ts",
     "test": "jest",
     "test-watch": "jest --watchAll"
   },
@@ -18,6 +19,7 @@
     "markdown-it": "^12.0.2",
     "node-fetch": "^2.6.1",
     "ts-jest": "^26.4.3",
+    "ts-node": "^9.0.0",
     "typescript": "^4.0.5"
   }
 }

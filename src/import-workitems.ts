@@ -29,9 +29,6 @@ export const jiraDateToADate = (date) => date && new Date(date).toISOString();
 export const azdoDate = (date) => (date as Date).toISOString();
 
 // CAUTION
-const DELETE_ALL_FIRST = false;
-const DO_IMPORT = false;
-
 const RUN_DIR = './run';
 
 export async function go(config: IConfig) {
@@ -88,14 +85,14 @@ newNode = CreateIteration(TeamProjectName, @"Ver1", new DateTime(2019, 1, 1), ne
     if (config.workitems.only) input = [input[config.workitems.only - 2]];
 
     let { transformed, deferred, idMap } = transformInput(transformer, config.workitems.default_area, input, remoteStateMap);
-    if (DELETE_ALL_FIRST) await deleteImportedWorkItems(workItems);
+    if (config.workitems.deleteAllFirst) await deleteImportedWorkItems(workItems);
 
     if (Object.keys(deferred).length > 0) {
         writeFileSync('./run/deferred.json', JSON.stringify(deferred, null, 2));
         console.info(`wrote ${deferred.length} to deferred.json in ${RUN_DIR}`);
     }
 
-    if (DO_IMPORT) {
+    if (config.workitems.doImport) {
         const errors = await doImport(workItems, transformed, idMap, config.workitems.people_mappings);
         if (errors.length > 0) {
             writeFileSync('./run/errors.json', JSON.stringify(errors, null, 2));

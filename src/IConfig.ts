@@ -7,6 +7,8 @@ export interface IAuth {
   team: string;
 }
 export interface IWorkitems {
+  deleteAllFirst?: boolean,
+  doImport?: boolean,
   limit?: number;
   only?: number;
   // useful to, for example, not check users
