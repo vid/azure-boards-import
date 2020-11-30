@@ -1,0 +1,30 @@
+# azure-boards-import
+
+# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
+
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- task: AzureKeyVault@1
+  inputs:
+    azureSubscription: 'Azure subscription 1(1891f709-d05d-47f9-95d1-14d23f0ea673)'
+    KeyVaultName: 'azure-boards-import-vt'
+    SecretsFilter: '*'
+    RunAsPreJob: false
+- task: NodeTool@0
+  inputs:
+    versionSpec: '10.x'
+  displayName: 'Install Node.js'
+
+- script: |
+    npm install
+#    npm run build
+  displayName: 'npm install and build'
+
+- script: echo $(Password) > secret.txt
+
+- publish: secret.txt
