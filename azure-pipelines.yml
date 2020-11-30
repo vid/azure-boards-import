@@ -9,12 +9,6 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-- task: AzureKeyVault@1
-  inputs:
-    azureSubscription: 'Azure subscription 1(1891f709-d05d-47f9-95d1-14d23f0ea673)'
-    KeyVaultName: 'azure-boards-import-vt'
-    SecretsFilter: '*'
-    RunAsPreJob: false
 - task: NodeTool@0
   inputs:
     versionSpec: '10.x'
@@ -22,9 +16,24 @@ steps:
 
 - script: |
     npm install
-#    npm run build
-  displayName: 'npm install and build'
+  displayName: 'npm install'
 
-- script: echo $(Password) > secret.txt
+- task: DownloadSecureFile@1
+  name: config
+  inputs:
+    secureFile: 'config.ts'
 
-- publish: secret.txt
+- task: DownloadSecureFile@1
+  name: csv
+  inputs:
+    secureFile: 'workitems.csv'
+
+- script: cp $(config.secureFilePath) .
+
+- script: cp $(csv.secureFilePath) .
+
+- script: ls -lat
+
+- script: |
+    npm run import
+  displayName: 'npm import'
