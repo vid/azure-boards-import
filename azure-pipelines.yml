@@ -26,11 +26,16 @@ steps:
 
 - task: DownloadSecureFile@1
   inputs:
+    name: config
     secureFile: 'config.ts'
 
 - task: DownloadSecureFile@1
   inputs:
+    name: csv
     secureFile: 'workitems.csv'
+
+-script: ls
+
 
 - script: |
     npm run import
