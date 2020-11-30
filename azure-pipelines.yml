@@ -25,17 +25,20 @@ steps:
   displayName: 'npm install'
 
 - task: DownloadSecureFile@1
+  name: config
   inputs:
-    name: config
     secureFile: 'config.ts'
 
 - task: DownloadSecureFile@1
+  name: csv
   inputs:
-    name: csv
     secureFile: 'workitems.csv'
 
-- script: ls
+- script: cp $(config.secureFilePath) .
 
+- script: cp $(csv.secureFilePath) .
+
+- script: ls -lat
 
 - script: |
     npm run import
