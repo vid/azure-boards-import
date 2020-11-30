@@ -31,6 +31,8 @@ export const azdoDate = (date) => (date as Date).toISOString();
 // CAUTION
 const RUN_DIR = './run';
 
+process.on('unhandledRejection', up => { throw up })
+
 export async function go(config: IConfig) {
     const workitems_file = config.workitems.file || 'sample/workitems.csv';
 

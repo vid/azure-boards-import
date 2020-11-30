@@ -36,7 +36,6 @@ export class Transformer {
       "Custom field (Start date)": undefined,
       Description: ({ v, newItem }) => {
         const desc = jiraMdToAzboardsHTML(v as string);
-        console.log('v', v, desc)
         newItem['/fields/System.Description'] = desc;
       },
       Status: (ctx) => this.getStatus(ctx, this.wconfig.state_mappings, this.wconfig.defer_types),
