@@ -237,7 +237,6 @@ async function deleteImportedWorkItems(wi, area) {
     const cis = await wi.getWorkItems(res.workItems.map(r => r.id));
     const wis = cis.filter(w => w.fields['System.Title'].match(/\(SIC-\d+\)$/)).map(w => w.id);
     console.info('deleting workitems:', wis);
-    /*
     for (const r of wis) {
         console.info('delete', r);
         try {
@@ -246,5 +245,4 @@ async function deleteImportedWorkItems(wi, area) {
             console.error(e);
         }
     }
-    */
 }
