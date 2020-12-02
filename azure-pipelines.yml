@@ -26,7 +26,7 @@ steps:
 - task: DownloadSecureFile@1
   name: csv
   inputs:
-    secureFile: 'ap.csv'
+    secureFile: 'mfa.csv'
 
 - script: cp $(config.secureFilePath) .
 
