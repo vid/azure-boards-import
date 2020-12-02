@@ -233,7 +233,7 @@ export class WorkItems extends DevopsApi {
     let wiql = {
       query:
         `SELECT [System.Id], [System.WorkItemType], [System.Description], [System.Title], [System.AssignedTo], [System.State], [System.Tags] FROM workitems WHERE [System.TeamProject] = @project`
-         + (area ? ` AND [System.AreaPath] = '${area}'` : '')
+        + (area ? ` AND [System.AreaPath] = '${area}'` : '')
     };
 
     try {
@@ -267,8 +267,26 @@ export class WorkItems extends DevopsApi {
     return workItems;
   }
 
-  // standard updateWorkItem call used for all updates
   async updateWorkItem(patchDocument, id) {
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    let tries = 0;
+    while (true) {
+      try {
+        const res = await this._updateWorkItem(patchDocument, id);
+        return res;
+      } catch (e) {
+        console.log('giving up');
+        if (tries++ > 3) {
+          throw (e);
+        }
+        console.info('retrying', tries);
+        await sleep(3000);
+      }
+    }
+  };
+
+  // standard updateWorkItem call used for all updates
+  async _updateWorkItem(patchDocument, id) {
     const client = await this.getWorkItemTrackingApi();
     try {
       const workItemSaveResult = await client.updateWorkItem(
